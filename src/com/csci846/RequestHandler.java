@@ -1,34 +1,25 @@
 package com.csci846;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
-import java.util.Scanner;
 
-// RequestHandler is thread that process requests of one client connection
 public class RequestHandler extends Thread {
 
 	Socket clientSocket;
 	InputStream inFromClient;
 	OutputStream outToClient;
 
-	private ProxyServer server;
+	private final ProxyServer server;
 
 	public RequestHandler(Socket clientSocket, ProxyServer proxyServer) {
 		this.clientSocket = clientSocket;
@@ -46,25 +37,22 @@ public class RequestHandler extends Thread {
 	@Override
 	public void run() {
 		try {
-			// (1) Check the request type, only process GET request and ignore others
 			HttpRequest httpRequest = httpRequestBuilder();
 
-			// (2) If the url of GET request has been cached, respond with cached content
 			if(httpRequest.getMethod().equals("GET")){
-				// If cache exists forward it on
-				// (3) Otherwise, call method proxyServertoClient to process the GET request
+
 				if(server.getCache(httpRequest.getUrl()) == null){
 					proxyServertoClient(httpRequest);
 				}
 				else{
-					System.out.println("Cached URL: " + httpRequest.getUrl());
+					System.out.println("Calling cache");
 					sendCachedInfoToClient(server.getCache(httpRequest.getUrl()));
 				}
 			}
 
 			clientSocket.close();
+
 		} catch (IOException ex) {
-			System.out.println("+Server exception: " + ex.getMessage());
 			ex.printStackTrace();
 		}
 	}
@@ -81,84 +69,46 @@ public class RequestHandler extends Thread {
 		return new HttpRequest(requestBuilder);
 	}
 
-	private boolean proxyServertoClient(HttpRequest clientRequest) {
-		// Create Buffered output stream to write to cached copy of file
+	private void proxyServertoClient(HttpRequest clientRequest) {
+
 		String fileName = "cached/" + generateRandomFileName() + ".dat";
 
-		// to handle binary content, byte is used
-		byte[] serverReply = new byte[1000];
+		byte[] serverReply = new byte[4096];
 
-		/**
-		 * To do
-		 * (1) Create a socket to connect to the web server (default port 80)
-		 * (2) Send client's request (clientRequest) to the web server, you may want to use flush() after writing.
-		 * (3) Use a while loop to read all responses from web server and send back to client
-		 * (4) Write the web server's response to a cache file, put the request URL and cache file name to the cache Map
-		 * (5) close file, and sockets.
-		 */
-
-		// (1) Create a socket to connect to the web server (default port 80)
-		// No need to close sockets or files as they are in a resource try block.
-		StringBuilder headerBuilder = new StringBuilder();
-		StringBuilder contentBuilder = new StringBuilder();
-
-		try (Socket proxySocket = new Socket("localhost", 8080)) {
+		try (Socket socketToWebServer = new Socket(clientRequest.getHost(), 80)) {
+			socketToWebServer.setSoTimeout(2000);
 
 			System.out.println("New Outbound client connected");
-			// (2) Send client's request (clientRequest) to the web server, you may want to use flush() after writing.
-			proxySocket.setSoTimeout(2000);
-			OutputStream outputStream = proxySocket.getOutputStream();
-			InputStream inFromServer = proxySocket.getInputStream();
 
-			BufferedWriter proxyToServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
+			OutputStream outputStream = socketToWebServer.getOutputStream();
+			InputStream inFromServer = socketToWebServer.getInputStream();
 
-			// Passing through Data from client (browser / postman) to the web server
-			proxyToServerBufferedWriter.write(clientRequest.getRequest());
-			proxyToServerBufferedWriter.flush();
+			BufferedWriter proxyToWebServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
 
-			// (3) Use a while loop to read all responses from web server and send back to client
-			// Get data from the web server and passthrough back to the client (browser / postman)
-			// TODO: Split headers from content, pass everything back, but only store content and needed headers, like content-type etc.
-			int readBytes;
-			while ((readBytes = inFromServer.read(serverReply)) > 0){
-				outToClient.write(serverReply, 0, readBytes);
-				outToClient.flush();
-			}
+			proxyToWebServerBufferedWriter.write(clientRequest.getRequest());
+			proxyToWebServerBufferedWriter.flush();
 
-//			BufferedReader reader = new BufferedReader(new InputStreamReader(inFromServer));
-//			String line;
-//			PrintWriter writer = new PrintWriter(outToClient);
-//
-//			while (!(line = reader.readLine()).isBlank()) {
-//				headerBuilder.append(line).append("\r\n");
-//			}
-//
-//			int readBytes;
-//			while ((readBytes = inFromServer.read(serverReply)) > 0){
-//				outToClient.write(serverReply, 0, readBytes);
-//				outToClient.flush();
-//			}
-
+			serverReply = inFromServer.readAllBytes();
+			outToClient.write(serverReply, 0, serverReply.length);
+			outToClient.flush();
 
 		} catch (IOException ex) {
-			System.out.println("++Server exception: " + ex.getMessage());
 			ex.printStackTrace();
 		}
 
+		writeServerToClientResponseToCache(serverReply,clientRequest.getUrl(),fileName);
 
-		// (4) Write the web server's response to a cache file, put the request URL and cache file name to the cache Map
+	}
+
+	private void writeServerToClientResponseToCache(byte[] data, String url, String fileName){
 		try (FileOutputStream stream = new FileOutputStream(fileName)) {
-//			stream.write(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
-			stream.write(serverReply);
+			stream.write(data);
 			stream.flush();
-			server.putCache(clientRequest.getUrl(),fileName);
+			server.putCache(url,fileName);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		return true;
 	}
-
-	// Sends the cached content stored in the cache file to the client
 
 	private void sendCachedInfoToClient(String fileName) {
 		try {
@@ -178,7 +128,6 @@ public class RequestHandler extends Thread {
 		}
 	}
 
-	// Generates a random file name
 	public String generateRandomFileName() {
 
 		String ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_";
