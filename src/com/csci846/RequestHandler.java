@@ -38,9 +38,9 @@ public class RequestHandler extends Thread {
 	public void run() {
 		try {
 			HttpRequest httpRequest = httpRequestBuilder();
+			String logRequest = clientSocket.getInetAddress().getHostAddress() + " " + httpRequest.getUrl();
 
 			if(httpRequest.getMethod().equals("GET")){
-
 				if(server.getCache(httpRequest.getUrl()) == null){
 					proxyServertoClient(httpRequest);
 				}
@@ -50,6 +50,7 @@ public class RequestHandler extends Thread {
 				}
 			}
 
+			server.writeLog(logRequest);
 			clientSocket.close();
 
 		} catch (IOException ex) {
@@ -75,22 +76,17 @@ public class RequestHandler extends Thread {
 
 		byte[] serverReply = new byte[4096];
 
-		try (Socket socketToWebServer = new Socket(clientRequest.getHost(), 80)) {
+		try (Socket socketToWebServer = new Socket("localhost", 8080)) {
 			socketToWebServer.setSoTimeout(2000);
-
 			System.out.println("New Outbound client connected");
 
-			OutputStream outputStream = socketToWebServer.getOutputStream();
+			sendRequestFromClientToServer(socketToWebServer, clientRequest);
+
 			InputStream inFromServer = socketToWebServer.getInputStream();
-
-			BufferedWriter proxyToWebServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
-
-			proxyToWebServerBufferedWriter.write(clientRequest.getRequest());
-			proxyToWebServerBufferedWriter.flush();
-
 			serverReply = inFromServer.readAllBytes();
-			outToClient.write(serverReply, 0, serverReply.length);
-			outToClient.flush();
+
+			forwardRequestFromServerToClient(serverReply);
+
 
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -98,16 +94,6 @@ public class RequestHandler extends Thread {
 
 		writeServerToClientResponseToCache(serverReply,clientRequest.getUrl(),fileName);
 
-	}
-
-	private void writeServerToClientResponseToCache(byte[] data, String url, String fileName){
-		try (FileOutputStream stream = new FileOutputStream(fileName)) {
-			stream.write(data);
-			stream.flush();
-			server.putCache(url,fileName);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 	}
 
 	private void sendCachedInfoToClient(String fileName) {
@@ -139,5 +125,32 @@ public class RequestHandler extends Thread {
 		}
 		return sb.toString();
 	}
+
+	private void sendRequestFromClientToServer(final Socket socketToWebServer, final HttpRequest clientRequest) throws IOException {
+		OutputStream outputStream = socketToWebServer.getOutputStream();
+		BufferedWriter proxyToWebServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
+
+		proxyToWebServerBufferedWriter.write(clientRequest.getRequest());
+		proxyToWebServerBufferedWriter.flush();
+
+	}
+
+	private void forwardRequestFromServerToClient(final byte[] serverReply) throws IOException {
+		outToClient.write(serverReply, 0, serverReply.length);
+		outToClient.flush();
+	}
+
+	private void writeServerToClientResponseToCache(byte[] data, String url, String fileName){
+		try (FileOutputStream stream = new FileOutputStream(fileName)) {
+			stream.write(data);
+			stream.flush();
+			server.putCache(url,fileName);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+
+
 
 }
