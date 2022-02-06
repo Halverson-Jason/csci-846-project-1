@@ -28,11 +28,6 @@ public class RequestHandler extends Thread {
 	InputStream inFromClient;
 	OutputStream outToClient;
 
-	byte[] request = new byte[1024];
-
-	BufferedReader proxyToClientBufferedReader;
-	BufferedWriter proxyToClientBufferedWriter;
-
 	private ProxyServer server;
 
 	public RequestHandler(Socket clientSocket, ProxyServer proxyServer) {
@@ -52,7 +47,7 @@ public class RequestHandler extends Thread {
 	public void run() {
 		try {
 			// (1) Check the request type, only process GET request and ignore others
-			proxyToClientBufferedReader = new BufferedReader(new InputStreamReader(inFromClient));
+			BufferedReader proxyToClientBufferedReader = new BufferedReader(new InputStreamReader(inFromClient));
 
 			StringBuilder requestBuilder = new StringBuilder();
 			String line;
@@ -60,6 +55,7 @@ public class RequestHandler extends Thread {
 			while (!(line = proxyToClientBufferedReader.readLine()).isBlank()) {
 				requestBuilder.append(line).append("\r\n");
 			}
+			requestBuilder.append("\r\n");
 
 			String httpRequest = parseHttpRequest(requestBuilder.toString());
 			String url = parseUrl(requestBuilder.toString());
@@ -82,22 +78,14 @@ public class RequestHandler extends Thread {
 			System.out.println("+Server exception: " + ex.getMessage());
 			ex.printStackTrace();
 		}
-
 	}
 
 	private boolean proxyServertoClient(String clientRequest) {
-
-		FileOutputStream fileWriter = null;
-		Socket serverSocket = null;
-
-		OutputStream outToServer;
-
 		// Create Buffered output stream to write to cached copy of file
 		String fileName = "cached/" + generateRandomFileName() + ".dat";
 
 		// to handle binary content, byte is used
 		byte[] serverReply = new byte[1000];
-
 
 		/**
 		 * To do
@@ -124,14 +112,12 @@ public class RequestHandler extends Thread {
 			BufferedWriter proxyToServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
 
 			// Passing through Data from client (browser / postman) to the web server
-			// TODO: Add the two newlines in the builder portion
-			String request = clientRequest + "\r\n";
-			proxyToServerBufferedWriter.write(request);
+			proxyToServerBufferedWriter.write(clientRequest);
 			proxyToServerBufferedWriter.flush();
 
-			// TODO: (3) Use a while loop to read all responses from web server and send back to client
-
+			// (3) Use a while loop to read all responses from web server and send back to client
 			// Get data from the web server and passthrough back to the client (browser / postman)
+			// TODO: Split headers from content, pass everything back, but only store content and needed headers, like content-type etc.
 			int readBytes;
 			while ((readBytes = inFromServer.read(serverReply)) > 0){
 				outToClient.write(serverReply, 0, readBytes);
@@ -174,27 +160,20 @@ public class RequestHandler extends Thread {
 	// Sends the cached content stored in the cache file to the client
 
 	private void sendCachedInfoToClient(String fileName) {
-
 		try {
-
 			byte[] bytes = Files.readAllBytes(Paths.get(fileName));
 
 			outToClient.write(bytes);
 			outToClient.flush();
-
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-
 		try {
-
 			if (clientSocket != null) {
 				clientSocket.close();
 			}
-
 		} catch (Exception e) {
 			e.printStackTrace();
-
 		}
 	}
 
