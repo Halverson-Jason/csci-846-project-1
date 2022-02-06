@@ -76,7 +76,7 @@ public class RequestHandler extends Thread {
 
 		byte[] serverReply = new byte[4096];
 
-		try (Socket socketToWebServer = new Socket("localhost", 8080)) {
+		try (Socket socketToWebServer = new Socket(clientRequest.getHost(), 80)) {
 			socketToWebServer.setSoTimeout(2000);
 			System.out.println("New Outbound client connected");
 
