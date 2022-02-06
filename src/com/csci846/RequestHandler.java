@@ -47,29 +47,18 @@ public class RequestHandler extends Thread {
 	public void run() {
 		try {
 			// (1) Check the request type, only process GET request and ignore others
-			BufferedReader proxyToClientBufferedReader = new BufferedReader(new InputStreamReader(inFromClient));
-
-			StringBuilder requestBuilder = new StringBuilder();
-			String line;
-
-			while (!(line = proxyToClientBufferedReader.readLine()).isBlank()) {
-				requestBuilder.append(line).append("\r\n");
-			}
-			requestBuilder.append("\r\n");
-
-			String httpRequest = parseHttpRequest(requestBuilder.toString());
-			String url = parseUrl(requestBuilder.toString());
+			HttpRequest httpRequest = httpRequestBuilder();
 
 			// (2) If the url of GET request has been cached, respond with cached content
-			if(httpRequest.equals("GET")){
+			if(httpRequest.getMethod().equals("GET")){
 				// If cache exists forward it on
 				// (3) Otherwise, call method proxyServertoClient to process the GET request
-				if(server.getCache(url) == null){
-					proxyServertoClient(requestBuilder.toString());
+				if(server.getCache(httpRequest.getUrl()) == null){
+					proxyServertoClient(httpRequest);
 				}
 				else{
-					System.out.println("Cached URL: " + url);
-					sendCachedInfoToClient(server.getCache(url));
+					System.out.println("Cached URL: " + httpRequest.getUrl());
+					sendCachedInfoToClient(server.getCache(httpRequest.getUrl()));
 				}
 			}
 
@@ -80,7 +69,19 @@ public class RequestHandler extends Thread {
 		}
 	}
 
-	private boolean proxyServertoClient(String clientRequest) {
+	private HttpRequest httpRequestBuilder() throws IOException {
+		BufferedReader proxyToClientBufferedReader = new BufferedReader(new InputStreamReader(inFromClient));
+		StringBuilder requestBuilder = new StringBuilder();
+		String line;
+
+		while (!(line = proxyToClientBufferedReader.readLine()).isBlank()) {
+			requestBuilder.append(line).append("\r\n");
+		}
+
+		return new HttpRequest(requestBuilder);
+	}
+
+	private boolean proxyServertoClient(HttpRequest clientRequest) {
 		// Create Buffered output stream to write to cached copy of file
 		String fileName = "cached/" + generateRandomFileName() + ".dat";
 
@@ -112,7 +113,7 @@ public class RequestHandler extends Thread {
 			BufferedWriter proxyToServerBufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
 
 			// Passing through Data from client (browser / postman) to the web server
-			proxyToServerBufferedWriter.write(clientRequest);
+			proxyToServerBufferedWriter.write(clientRequest.getRequest());
 			proxyToServerBufferedWriter.flush();
 
 			// (3) Use a while loop to read all responses from web server and send back to client
@@ -150,7 +151,7 @@ public class RequestHandler extends Thread {
 //			stream.write(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
 			stream.write(serverReply);
 			stream.flush();
-			server.putCache(parseUrl(clientRequest),fileName);
+			server.putCache(clientRequest.getUrl(),fileName);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -175,23 +176,6 @@ public class RequestHandler extends Thread {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-	}
-
-	private String parseHttpRequest(final String textReceived) {
-		String[] requestsLines = textReceived.split("\r\n");
-		String[] requestLine = requestsLines[0].split(" ");
-		return requestLine[0];
-	}
-
-	private String parseUrl(final String textReceived) {
-		String[] requestsLines = textReceived.split("\r\n");
-		String[] requestLine = requestsLines[0].split(" ");
-		return requestLine[1];
-	}
-
-	private String parseHost(final String textReceived){
-		String[] requestsLines = textReceived.split("\r\n");
-		return requestsLines[1].split(" ")[1];
 	}
 
 	// Generates a random file name
