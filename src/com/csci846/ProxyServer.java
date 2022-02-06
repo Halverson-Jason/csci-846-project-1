@@ -48,6 +48,11 @@ public class ProxyServer {
 		}
 	}
 
+
+	public boolean cacheExistsForURL(String hashcode){
+		return cache.containsKey(hashcode);
+	}
+
 	public String getCache(String hashcode) {
 		return cache.get(hashcode);
 	}

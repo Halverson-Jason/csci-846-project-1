@@ -41,12 +41,12 @@ public class RequestHandler extends Thread {
 			String logRequest = clientSocket.getInetAddress().getHostAddress() + " " + httpRequest.getUrl();
 
 			if(httpRequest.getMethod().equals("GET")){
-				if(server.getCache(httpRequest.getUrl()) == null){
-					proxyServertoClient(httpRequest);
-				}
-				else{
+				if(server.cacheExistsForURL(httpRequest.getUrl())){
 					System.out.println("Calling cache");
 					sendCachedInfoToClient(server.getCache(httpRequest.getUrl()));
+				}
+				else{
+					proxyServertoClient(httpRequest);
 				}
 			}
 
